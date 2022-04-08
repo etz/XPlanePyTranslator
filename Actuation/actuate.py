@@ -161,31 +161,82 @@ if __name__=='__main__':
         #reset keys and data_output
         keys = []
         data_output = []
-        #print(data_dict)
-        #print(data_dict[11])
 
-        #store current throttle data (already normalized between 0-1)
+
+        #CONSTANTS -- extract plane datapoints to variables
+
+        #throttle data
         throttle = data_dict[25][0]
         #print(throttle)
 
-        #store current ailrn data (normalized between 0-1)
+        #elevator data
+        elevator = data_dict[11][0]
+        elev_norm = (ailrn--1)/(1--1)
+
+        #ailrn data (normalized between 0-1)
         ailrn = data_dict[11][1]
         ailrn_norm = (ailrn--1)/(1--1)
         #print(ailrn_norm)
 
-        #move servos based on input
+        #rudder data
+        rudder = data_dict[11][2]
+        rudder_norm = (rudder--0.1950)/(0.2050--0.1950)
+
+        #flaps data
+        flaps = data_dict[13][3]
+
+
+
+
+        #ACTUATE - move servos based on input
+
+        #throttle
         if throttle > 0:
             speed = (2000*throttle)+500
             print("speed= " + str(speed))
-            pwm.setServoPulse(3,speed)
+            pwm.setServoPulse(10,speed)
             time.sleep(0.02)
+
+        #elevator -- spot #2 on HAT
+        if elev_norm != 0.5:
+            elevator = (2000*ailrn_norm)+500
+            reverse = 2500-elevator
+            #print("reverse= " + str(reverse))
+            elevator = 500+reverse
+            #print("elevator= " + str(elevator))
+            pwm.setServoPulse(2,elevator)
+            time.sleep(0.02)
+        else:
+            pwm.setServoPulse(2,1500)
+
+        #ailerons -- spot #4 on HAT
         if ailrn_norm != 0.5:
             ailrns = (2000*ailrn_norm)+500
             reverse = 2500-ailrns
             #print("reverse= " + str(reverse))
             ailrns = 500+reverse
-            print("ailrns= " + str(ailrns))
+            #print("ailrns= " + str(ailrns))
             pwm.setServoPulse(4,ailrns)
             time.sleep(0.02)
         else:
             pwm.setServoPulse(4,1500)
+
+        #rudder -- spot #6 on HAT
+        if rudder_norm != 0.5:
+            rudder = (2000*rudder_norm)+500
+            #reverse = 2500-rudder
+            #print("reverse= " + str(reverse))
+            #rudder = 500+reverse
+            #print("ailrns= " + str(ailrns))
+            pwm.setServoPulse(4,rudder)
+            time.sleep(0.02)
+        else:
+            pwm.setServoPulse(6,1500)
+
+        #flaps -- spot #8 on HAT
+        if flaps != 0:
+            flaps = 2500-(flaps*2000)
+            pwm.setServoPulse(8,ailrns)
+            time.sleep(0.02)
+        else:
+            pwm.setServoPulse(8,2500)
