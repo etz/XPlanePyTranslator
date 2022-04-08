@@ -228,7 +228,7 @@ if __name__=='__main__':
             #print("reverse= " + str(reverse))
             #rudder = 500+reverse
             #print("ailrns= " + str(ailrns))
-            pwm.setServoPulse(4,rudder)
+            pwm.setServoPulse(6,rudder)
             time.sleep(0.02)
         else:
             pwm.setServoPulse(6,1500)
