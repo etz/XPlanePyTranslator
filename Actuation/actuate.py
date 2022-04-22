@@ -1,30 +1,42 @@
 #!/usr/bin/python
 
+#actuate the RV E-flite 1.7m based on X-Plane data.
+#debugging on non-pi? comment out 'pwm.', 'pwm =' statements and import smbus
+
 import time
 import math
 import smbus
 import socket
 import struct
+import logging
+
+#logging level
+#DEBUG - print translated data and actuation PWM, most verbose
+#INFO - show actuation PWM, less verbose
+#WARNING - default, no verbosity
+logging.basicConfig(level=logging.DEBUG)
+
 
 #socket information
-localIP = "192.168.0.15"
-localPort = 20001
+localIP = "127.0.0.1" #local ipv4 address
+localPort = 20001 #listening port
 bufferSize = 1024
 
-#create a dictionary
-keys = []
-data_output = []
-data_dict = {}
 
-#Create a datagram socket
+
+
+keys = [] #the numbers associated with the General Data Outputs extracted from x-plane
+data_output = [] #stores values from each General Data Outputs
+data_dict = {} #allows for the interpretation of specific General Data Outputs from X-Plane ex. data_dict[key][0]
+
+#Create a socket where we will listen for X-Plane data
 UDPServer = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-
 UDPServer.bind((localIP,localPort))
 
-print("UDP Server Listening...")
+logging.warning("UDP Server Listening...")
 
 # ============================================================================
-# Raspi PCA9685 16-Channel PWM Servo Driver
+# Raspi PCA9685 16-Channel PWM Servo Driver (from Waveshare: https://www.waveshare.com/wiki/Servo_Driver_HAT)
 # ============================================================================
 
 class PCA9685:
@@ -100,143 +112,125 @@ class PCA9685:
         pulse = pulse*4096/20000        #PWM frequency is 50HZ,the period is 20000us
         self.setPWM(channel, 0, int(pulse))
 
-def normalize(val, Rmin, max):
-    normalized = (val-min)/(max-min)
-    return normalized
-
 
 if __name__=='__main__':
 
-    pwm = PCA9685(0x40, debug=False)
+    #enable the actuation
+    #pwm = PCA9685(0x40, debug=False)
     pwm.setPWMFreq(50)
+
     while True:
-        #wait for incoming transmission
-        bytesAddressPair = UDPServer.recvfrom(bufferSize)
-        #convert to hex
-        message = bytesAddressPair[0].hex()
+        # PACKET TRANSLATION - convert UDP bytes to index values, floats and store in data_dict
 
-        #print raw message (debug)
-        #print("Raw Message: {}".format(message))
+        bytesAddressPair = UDPServer.recvfrom(bufferSize) #wait for incoming transmission
+        message = bytesAddressPair[0].hex() #convert byte-encoded packet to hex
+        #logging.debug("Raw Message: {}".format(message)) #uncomment to print raw bytes
 
-        #remove DATA*
-        message = message[10:]
+        message = message[10:] #remove DATA* before interpretation
 
         if(len(message)%72 != 0):
-            #Incorrect length
-            print("Incorrect packet size")
+            """Close the program if malformed packets are received"""
+            logging.critical("Incorrect packet size")
             quit()
 
-        #number of datapoints to translate
-        index_total = len(message)/72
+        index_total = len(message)/72 #determine number of datapoints to translate
 
-        #translate each datapoint (36 bytes each)
         while index_total != 0:
-            #parse datapoint index number
-            keys.append(int(message[:2], 16))
-            #remove data_index bytes
-            message = message[8:]
+            """store the General Data Outputs index, translate each datapoint (36 bytes each), append to data_output"""
+            keys.append(int(message[:2], 16)) #parse General Data Outputs index
+            message = message[8:] #remove the 8 bytes that store the index number
 
-            #array for values
-            data_values = []
+            data_values = [] #list that will store the translated x-plane values
 
-            #convert each value, store in data_values
             for x in range(8):
-                #convert first 4 bytes to precision floating point
+                """Convert each precision floating point value (up to 8) from bytes and store in data_values"""
                 value = struct.unpack('f', bytes.fromhex(message[:8]))[0]
-                data_values.append(round(value,4))
-                #remove bytes from string
-                message = message[8:]
+                data_values.append(round(value,4)) #round the value as it can move up or down easily
+                message = message[8:] #remove bytes from string
 
-
-            #print results to screen,reset values
             data_output.append(data_values)
-            #print(data_values)
             data_values = []
 
-            #after translation of first datapoint, loop to next
-            index_total = index_total - 1
+            index_total = index_total - 1 #iterate through each key until complete
 
-        #convert keys and values to a dictionary
-        data_dict = dict(zip(keys, tuple(data_output)))
-        #reset keys and data_output
-        keys = []
+
+        data_dict = dict(zip(keys, tuple(data_output))) #convert keys and values to a dictionary
+        logging.debug("{}".format(data_dict))
+
+        keys = [] #reset keys and data_output for next packet
         data_output = []
 
 
         #CONSTANTS -- extract plane datapoints to variables
-
-        #throttle data
-        throttle = data_dict[25][0]
-        #print(throttle)
+        throttle = data_dict[25][0] #throttle data
+        logging.debug("Throttle Data: {}".format(throttle))
 
         #elevator data
         elevator = data_dict[11][0]
-        elev_norm = (ailrn--1)/(1--1)
+        elevator_norm = (elevator--1)/(1--1)
+        logging.debug("Elevator Data: {}, {} (normalized)".format(elevator,elevator_norm))
 
-        #ailrn data (normalized between 0-1)
-        ailrn = data_dict[11][1]
-        ailrn_norm = (ailrn--1)/(1--1)
-        #print(ailrn_norm)
+        #aileron data (normalized between 0-1)
+        aileron = data_dict[11][1]
+        aileron_norm = (aileron--1)/(1--1)
+        logging.debug("Aileron Data: {}, {} (normalized)".format(aileron,aileron_norm))
 
         #rudder data
         rudder = data_dict[11][2]
         rudder_norm = (rudder--0.1950)/(0.2050--0.1950)
+        logging.debug("Rudder Data: {}, {} (normalized)".format(rudder,rudder_norm))
 
         #flaps data
         flaps = data_dict[13][3]
+        logging.debug("Flaps Data: {}".format(flaps))
 
 
 
 
         #ACTUATE - move servos based on input
 
-        #throttle
-        if throttle > 0:
+        if throttle > 0: #actuate throttle
             speed = (2000*throttle)+500
-            print("speed= " + str(speed))
             pwm.setServoPulse(10,speed)
+            logging.info("Throttle PWM: {}".format(speed))
             time.sleep(0.02)
 
-        #elevator -- spot #2 on HAT
-        if elev_norm != 0.5:
-            elevator = (2000*ailrn_norm)+500
+        if elevator_norm != 0.5: #actuate elevator
+            elevator = (2000*aileron_norm)+500
             reverse = 2500-elevator
-            #print("reverse= " + str(reverse))
             elevator = 500+reverse
-            #print("elevator= " + str(elevator))
             pwm.setServoPulse(2,elevator)
+            logging.info("Elevator PWM: {}".format(elevator))
             time.sleep(0.02)
         else:
             pwm.setServoPulse(2,1500)
+            pass
 
-        #ailerons -- spot #4 on HAT
-        if ailrn_norm != 0.5:
-            ailrns = (2000*ailrn_norm)+500
-            reverse = 2500-ailrns
-            #print("reverse= " + str(reverse))
-            ailrns = 500+reverse
-            #print("ailrns= " + str(ailrns))
-            pwm.setServoPulse(4,ailrns)
+        if aileron_norm != 0.5: #actuate ailerons
+            ailerons = (2000*aileron_norm)+500
+            reverse = 2500-ailerons
+            ailerons = 500+reverse
+            pwm.setServoPulse(4,ailerons)
+            logging.info("Aileron PWM: {}".format(ailerons))
             time.sleep(0.02)
         else:
             pwm.setServoPulse(4,1500)
+            pass
 
-        #rudder -- spot #6 on HAT
-        if rudder_norm != 0.5:
+        if rudder_norm != 0.5: #actuate rudder
             rudder = (2000*rudder_norm)+500
-            #reverse = 2500-rudder
-            #print("reverse= " + str(reverse))
-            #rudder = 500+reverse
-            #print("ailrns= " + str(ailrns))
             pwm.setServoPulse(6,rudder)
+            logging.info("Rudder PWM: {}".format(rudder))
             time.sleep(0.02)
         else:
             pwm.setServoPulse(6,1500)
+            pass
 
-        #flaps -- spot #8 on HAT
-        if flaps != 0:
+        if flaps != 0: #actuate flaps
             flaps = 2500-(flaps*2000)
-            pwm.setServoPulse(8,ailrns)
+            pwm.setServoPulse(8,flaps)
+            logging.info("Flap PWM: {}".format(flaps))
             time.sleep(0.02)
         else:
             pwm.setServoPulse(8,2500)
+            pass
