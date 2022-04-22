@@ -19,54 +19,44 @@ UDPServer.bind((localIP,localPort))
 print("UDP Server Listening...")
 
 #Listen for incoming datagram
-while(True):
-    bytesAddressPair = UDPServer.recvfrom(bufferSize)
-    #convert to hex
-    message = bytesAddressPair[0].hex()
-    print("Raw Message: {}".format(message))
-    #remove DATA*
-    message = message[10:]
+while True:
 
-    if(len(message)%72 != 0):
-        #Incorrect length
-        print("Incorrect packet size")
+        # PACKET TRANSLATION - convert UDP bytes to index values, floats and store in data_dict
+
+    bytesAddressPair = UDPServer.recvfrom(bufferSize)  # wait for incoming transmission
+    message = bytesAddressPair[0].hex()  # convert byte-encoded packet to hex
+
+        # logging.debug("Raw Message: {}".format(message)) #uncomment to print raw bytes
+
+    message = message[10:]  # remove DATA* before interpretation
+
+    if len(message) % 72 != 0:
+        logging.critical('Incorrect packet size')
         quit()
 
-    #number of datapoints to translate
-    index_total = len(message)/72
+    index_total = len(message) / 72  # determine number of datapoints to translate
 
-    #translate each datapoint (36 bytes each)
     while index_total != 0:
-        #parse datapoint index number
-        keys.append(int(message[:2], 16))
-        #remove data_index bytes
-        message = message[8:]
+        key = int(message[:2], 16)
+        #keys.append(int(message[:2], 16))  # parse General Data Outputs index
+        message = message[8:]  # remove the 8 bytes that store the index number
 
-        #array for values
-        data_values = []
+        data_values = []  # list that will store the translated x-plane values
 
-        #convert each value, store in data_values
         for x in range(8):
-            #convert first 4 bytes to precision floating point
             value = struct.unpack('f', bytes.fromhex(message[:8]))[0]
-            data_values.append(value)
-            #remove bytes from string
-            message = message[8:]
+            data_values.append(value)  # round the value as it can move up or down easily
+            message = message[8:]  # remove bytes from string
 
-
-        #print results to screen,reset values
-        data_output.append(data_values)
-        print(data_values)
+        data_dict[key] = data_values
         data_values = []
 
-        #after translation of first datapoint, loop to next
-        index_total = index_total - 1
+        index_total = index_total - 1  # iterate through each key until complete
 
-    #convert keys and values to a dictionary
-    data_dict = dict(zip(keys, zip(*data_output)))
-    #reset keys and data_output
-    keys = []
-    data_output = []
+    #data_dict = dict(zip(keys, tuple(data_output)))  # convert keys and values to a dictionary
+    #logging.debug('{}'.format(data_dict))
 
+    #keys = []  # reset keys and data_output for next packet
+    #data_output = []
 
     print(data_dict)

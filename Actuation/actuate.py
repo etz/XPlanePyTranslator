@@ -22,11 +22,6 @@ localIP = "127.0.0.1" #local ipv4 address
 localPort = 20001 #listening port
 bufferSize = 1024
 
-
-
-
-keys = [] #the numbers associated with the General Data Outputs extracted from x-plane
-data_output = [] #stores values from each General Data Outputs
 data_dict = {} #allows for the interpretation of specific General Data Outputs from X-Plane ex. data_dict[key][0]
 
 #Create a socket where we will listen for X-Plane data
@@ -136,8 +131,8 @@ if __name__=='__main__':
         index_total = len(message)/72 #determine number of datapoints to translate
 
         while index_total != 0:
-            """store the General Data Outputs index, translate each datapoint (36 bytes each), append to data_output"""
-            keys.append(int(message[:2], 16)) #parse General Data Outputs index
+            """store the General Data Outputs index, translate each datapoint (36 bytes each), add to data_dict"""
+            key = int(message[:2], 16) #parse General Data Outputs index
             message = message[8:] #remove the 8 bytes that store the index number
 
             data_values = [] #list that will store the translated x-plane values
@@ -148,17 +143,12 @@ if __name__=='__main__':
                 data_values.append(round(value,4)) #round the value as it can move up or down easily
                 message = message[8:] #remove bytes from string
 
-            data_output.append(data_values)
+            data_dict[key] = data_values
             data_values = []
 
             index_total = index_total - 1 #iterate through each key until complete
 
-
-        data_dict = dict(zip(keys, tuple(data_output))) #convert keys and values to a dictionary
         logging.debug("{}".format(data_dict))
-
-        keys = [] #reset keys and data_output for next packet
-        data_output = []
 
 
         #CONSTANTS -- extract plane datapoints to variables
